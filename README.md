@@ -15,9 +15,9 @@ OpenWrt Passwall2/Xray Configuration Tool
 
 ## 📥 Installation
 ```bash
-wget https://raw.githubusercontent.com/your-repo/main/passwall_setup.sh -O /root/passwall_setup.sh
-chmod +x /root/passwall_setup.sh
-./passwall_setup.sh
+wget https://raw.githubusercontent.com/jeet8200/Jeet-openwrt-passwall2/refs/heads/main/start.sh -O /root/start.sh
+chmod +x /root/start.sh
+./start.sh
 ```
 
 [Main Menu Options]   Make sure Get Backup Befor Using
