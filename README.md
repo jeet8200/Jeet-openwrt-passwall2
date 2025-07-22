@@ -1,120 +1,76 @@
 OpenWrt Passwall2/Xray Configuration Tool
+========================================
 
-https://openwrt.org/lib/tpl/openwrt/images/logo.png
-*A simple, user-friendly script to configure Passwall2 with Xray on OpenWrt routers*
-📌 Features
+[Features]
+- One-click Passwall2 + Xray installation
+- Iran-focused geo rules with optional countries
+- Firewall hardening & DNS-over-HTTPS
+- Performance tuning (experimental)
+- Built-in verification system
 
-    🔒 One-click setup for Passwall2 with Xray/V2Ray
+# OpenWrt Passwall2/Xray Configuration Script
 
-    🌍 GeoIP/Geosite management (Iran-focused by default)
+![OpenWrt](https://img.shields.io/badge/OpenWrt-Supported-brightgreen) 
+![Shell](https://img.shields.io/badge/Shell-Bash-blue)
 
-    ⚡ Performance optimization (experimental)
-
-    🔄 Rollback functionality for all changes
-
-    🛡️ Firewall hardening and security enhancements
-
-    📊 Verification system to check installation status
-
-🚀 Quick Start
-
-    Copy the script to your OpenWrt router:
-    bash
-
+## 📥 Installation
+```bash
+# Download script
 wget https://raw.githubusercontent.com/your-repo/main/passwall_setup.sh -O /root/passwall_setup.sh
 
-Make it executable:
-bash
-
+# Make executable
 chmod +x /root/passwall_setup.sh
 
-Run the script:
-bash
+# Run script
+./passwall_setup.sh
+```
 
-    /root/passwall_setup.sh
-
-🖥️ Main Menu Options
-text
-
+[Main Menu Options]   Make sure Get Backup Befor Using
 1) Install Dependencies
-2) Update Geo Files (Iran + Optional)
-3) Configure Passwall2 with Xray  
+2) Update Geo Files
+3) Configure Passwall2  
 4) Harden Firewall
 5) Setup DNS over HTTPS
 6) Verify Installation
 7) Experimental Optimizations ⚠️
-8) Run Complete Setup (Recommended)
+8) Run Complete Setup
 0) Exit
 
-🌟 Key Highlights
-Geo File Management
-
-    Default Iran routing rules
-
-    Optional additions for China/Russia
-
-    Custom country support
-
-    Automatic rule generation
-
-bash
-
-Select countries to include:
-1) Iran (ir)
-2) China (cn) 
+[Geo File Management]
+Available options:
+1) Iran (ir) [Default]
+2) China (cn)
 3) Russia (ru)
 4) Custom countries
 
-Safety Features
+Example custom input: "ir cn de"
 
-    Automatic backups before changes
+[Verification Commands]
+Check Xray version:
+xray -version
 
-    Detailed verification reports
+Check Passwall status:
+/etc/init.d/passwall2 status
 
-    Experimental features clearly marked
+Check geo files:
+ls -lh /usr/share/xray/geo*.dat
 
-    One-click rollback capability
-
-⚠️ Experimental Features
-
-The script includes optional network optimizations marked as experimental:
-
-    Adaptive TCP buffer sizing
-
-    Connection-specific tuning
-
-    Automatic hardware detection
-
-To access:
-bash
-
-Choose option 7 from main menu
-
-🔄 Rollback Instructions
-
-    For firewall changes:
-    bash
-
+[Rollback Procedures]
+Restore firewall:
 cp /etc/config/firewall.bak /etc/config/firewall
 /etc/init.d/firewall restart
 
-For network settings:
-bash
+Restore network settings:
+cp /etc/sysctl.conf.bak /etc/sysctl.conf
+sysctl -p
 
-    cp /etc/sysctl.conf.bak /etc/sysctl.conf
-    sysctl -p
+[Troubleshooting]
+View logs:
+logread | grep passwall
+tail -n 50 /tmp/xray.log
 
-📊 Verification Output Example
-text
+Reinstall components:
+opkg install --force-reinstall xray-core luci-app-passwall2
 
-Xray installed: Xray 1.8.4 (Xray, Penetrates Everything.)
-Passwall status: running
-Geo files: /usr/share/xray/geoip.dat (v20230315)
-DNS: Using DoH (cloudflare-dns.com)
-
-🤝 Contributing
-
-Pull requests are welcome! For major changes, please open an issue first.
-📜 License
-
-MIT
+[License]
+MIT License
