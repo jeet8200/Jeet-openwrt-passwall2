@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #=============================================#
-#   OpenWrt Passwall2/Xray Configuration     #
-#   Optimized for Iran with optional extras  #
+#   OpenWrt Passwall2/Xray Configuration      #
+#   Optimized for with optional extras        #
 #=============================================#
 
 # Colors
@@ -160,11 +160,11 @@ function configure_passwall() {
     uci set passwall.@bypass[0].domain_list='geosite:ir'
     
     # Xray core settings for best performance and stealth
-    uci set passwall.@global_forwarding[0].xray_protocol='vless'
-    uci set passwall.@global_forwarding[0].xray_transport='ws'
-    uci set passwall.@global_forwarding[0].xray_security='tls'
-    uci set passwall.@global_forwarding[0].xray_fingerprint='chrome'
-    uci set passwall.@global_forwarding[0].xray_flow='xtls-rprx-vision'
+    #uci set passwall.@global_forwarding[0].xray_protocol='vless'
+    #uci set passwall.@global_forwarding[0].xray_transport='ws'
+    #uci set passwall.@global_forwarding[0].xray_security='tls'
+    #uci set passwall.@global_forwarding[0].xray_fingerprint='chrome'
+    #uci set passwall.@global_forwarding[0].xray_flow='xtls-rprx-vision'
     
     # Performance tuning
     uci set passwall.@global[0].concurrency='8'
@@ -191,11 +191,11 @@ function harden_firewall() {
     /etc/init.d/uhttpd restart
     
     # Secure SSH
-    uci set dropbear.@dropbear[0].Port='2222'
-    uci set dropbear.@dropbear[0].PasswordAuth='off'
-    uci set dropbear.@dropbear[0].RootPasswordAuth='off'
-    uci commit dropbear
-    /etc/init.d/dropbear restart
+    #uci set dropbear.@dropbear[0].Port='2222'
+    #uci set dropbear.@dropbear[0].PasswordAuth='off'
+    #uci set dropbear.@dropbear[0].RootPasswordAuth='off'
+    #uci commit dropbear
+    #/etc/init.d/dropbear restart
     
     # Disable IPv6
     uci set network.globals.ula_prefix=''
@@ -211,14 +211,14 @@ function harden_firewall() {
     uci set firewall.@defaults[0].drop_invalid='1'
     
     # Rate limiting for SSH
-#    uci set firewall.ssh_limit=rule
-#    uci set firewall.ssh_limit.name='Limit SSH'
-#    uci set firewall.ssh_limit.src='wan'
-#    uci set firewall.ssh_limit.dest_port='2222'
-#    uci set firewall.ssh_limit.proto='tcp'
-#    uci set firewall.ssh_limit.target='DROP'
-#    uci set firewall.ssh_limit.limit='3/min'
-#    uci set firewall.ssh_limit.limit_burst='5'
+    uci set firewall.ssh_limit=rule
+    uci set firewall.ssh_limit.name='Limit SSH'
+    uci set firewall.ssh_limit.src='wan'
+    uci set firewall.ssh_limit.dest_port='22'
+    uci set firewall.ssh_limit.proto='tcp'
+    uci set firewall.ssh_limit.target='DROP'
+    uci set firewall.ssh_limit.limit='3/min'
+    uci set firewall.ssh_limit.limit_burst='5'
     
     uci commit firewall
     /etc/init.d/network restart
