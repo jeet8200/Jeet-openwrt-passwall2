@@ -15,13 +15,8 @@ OpenWrt Passwall2/Xray Configuration Tool
 
 ## 📥 Installation
 ```bash
-# Download script
 wget https://raw.githubusercontent.com/your-repo/main/passwall_setup.sh -O /root/passwall_setup.sh
-
-# Make executable
 chmod +x /root/passwall_setup.sh
-
-# Run script
 ./passwall_setup.sh
 ```
 
