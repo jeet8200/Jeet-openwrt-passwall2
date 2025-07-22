@@ -3,7 +3,7 @@ OpenWrt Passwall2/Xray Configuration Tool
 
 [Features]
 - One-click Passwall2 + Xray installation
-- Iran-focused geo rules with optional countries
+- Geo rules with optional countries
 - Firewall hardening & DNS-over-HTTPS
 - Performance tuning (experimental)
 - Built-in verification system
