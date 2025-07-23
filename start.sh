@@ -278,7 +278,7 @@ function experimental_optimization() {
         echo -e "${GREEN}2)${NC} Apply conservative defaults"
         echo -e "${GREEN}3)${NC} View current settings"
         echo -e "${GREEN}4)${NC} Restore original settings"
-        echo -e "${RED}0)${NC} ? Return to main menu"
+        echo -e "${RED}0)${NC}   Return to main menu"
         
         read -p "Your choice [0-4]: " choice
         
