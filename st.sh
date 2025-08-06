@@ -12,14 +12,15 @@ NC='\033[0m'
 CONFIG_BACKUP_DIR="/etc/config/backup-helper"
 MAX_BACKUPS=5
 LOG_FILE="/tmp/openwrt-manager.log"
+TEMP_DIR="/tmp/passwall_install"
 
-# Passwall2 Repositories
-REPO1="https://downloads.sourceforge.net/project/openwrt-passwall-build/releases/packages"
-REPO2="https://github.com/xiaorouji/openwrt-passwall/releases/download/packages"
-REPO3="https://op.supes.top/packages"
+# Working Repositories (Verified 2025-08-06)
+REPO_GITHUB="https://github.com/xiaorouji/openwrt-passwall2"
+REPO_RELEASE="25.6.21-1"
 
 # Initialize
 mkdir -p "$CONFIG_BACKUP_DIR" || echo "Failed to create backup directory" >&2
+mkdir -p "$TEMP_DIR" || echo "Failed to create temp directory" >&2
 touch "$LOG_FILE" || echo "Failed to create log file" >&2
 
 # Logging Function
@@ -39,6 +40,7 @@ show_header() {
   echo -e "${CYAN}================================================"
   echo -e "   OpenWrt VPN/Firewall Management System"
   echo -e "================================================${NC}"
+  echo ""
 }
 
 pause() {
@@ -94,6 +96,7 @@ check_status() {
   show_header
   echo -e "${BLUE}=== System Status Check ===${NC}"
   
+  # Check Passwall2
   if [ -f "/etc/init.d/passwall2" ]; then
     if pgrep -f passwall2 >/dev/null; then
       log "Passwall2 is installed and running" "green"
@@ -104,18 +107,21 @@ check_status() {
     log "Passwall2 is not installed" "red"
   fi
 
+  # Check Xray
   if pgrep -f xray >/dev/null; then
     log "Xray process is running" "green"
   else
     log "Xray process is not running" "red"
   fi
 
+  # Check BanIP
   if ipset list banip >/dev/null 2>&1; then
     log "BanIP IP set is active" "green"
   else
     log "BanIP IP set is not active" "red"
   fi
 
+  # Check Firewall rules
   if grep -q banip /etc/config/firewall; then
     log "Firewall rules for BanIP exist" "green"
   else
@@ -141,7 +147,7 @@ backup_configs() {
   local backup_failed=0
   
   # List of configuration files to backup
-  local config_files="passwall2 firewall banip network"
+  local config_files="passwall firewall banip network system"
   
   for config in $config_files; do
     if [ -f "/etc/config/$config" ]; then
@@ -326,45 +332,39 @@ full_uninstall() {
   pause
 }
 
-passwall_repo_menu() {
-  show_header
-  echo -e "${CYAN}=== Passwall2 Repository Selection ===${NC}"
-  echo -e "1) SourceForge (Official)"
-  echo -e "2) GitHub (xiaorouji)"
-  echo -e "3) OpenWrt Supes Top"
-  echo -e "4) Back to Main Menu"
-  echo -e "${CYAN}======================================${NC}"
-  echo -n "Enter your choice (1-4): "
-  read -r choice
+get_system_info() {
+  # Get distribution info
+  DISTRIB_RELEASE=$(grep 'DISTRIB_RELEASE' /etc/openwrt_release | cut -d= -f2 | tr -d "'")
+  DISTRIB_ARCH=$(grep 'DISTRIB_ARCH' /etc/openwrt_release | cut -d= -f2 | tr -d "'")
+  DISTRIB_TARGET=$(grep 'DISTRIB_TARGET' /etc/openwrt_release | cut -d= -f2 | tr -d "'")
+  DISTRIB_DESCRIPTION=$(grep 'DISTRIB_DESCRIPTION' /etc/openwrt_release | cut -d= -f2 | tr -d "'")
   
-  case "$choice" in
-    1) install_from_repo "$REPO1" ;;
-    2) install_from_repo "$REPO2" ;;
-    3) install_from_repo "$REPO3" ;;
-    4) return ;;
-    *) 
-      log "Invalid selection" "red"
-      pause
-      passwall_repo_menu
-      ;;
+  # Get model info
+  MODEL=$(cat /tmp/sysinfo/model 2>/dev/null)
+  [ -z "$MODEL" ] && MODEL=$(grep 'machine' /proc/cpuinfo | awk '{print $3}')
+  
+  echo -e "${CYAN}=== System Information ===${NC}"
+  echo -e "Model: $MODEL"
+  echo -e "Description: $DISTRIB_DESCRIPTION"
+  echo -e "Release: $DISTRIB_RELEASE"
+  echo -e "Architecture: $DISTRIB_ARCH"
+  echo -e "Target: $DISTRIB_TARGET"
+  echo -e "${CYAN}=========================${NC}"
+}
+
+get_system_arch() {
+  local arch=$(grep 'DISTRIB_ARCH' /etc/openwrt_release | cut -d= -f2 | tr -d "'")
+  case "$arch" in
+    "aarch64_cortex-a53") echo "aarch64_generic" ;;
+    "arm_cortex-a7_neon-vfpv4") echo "arm_cortex-a7_neon-vfpv4" ;;
+    "x86_64") echo "x86_64" ;;
+    "mipsel_24kc") echo "mipsel_24kc" ;;
+    *) echo "$arch" ;;
   esac
 }
 
-install_from_repo() {
-  local repo_base="$1"
-  
-  if [ -f "/etc/init.d/passwall2" ]; then
-    log "Passwall2 is already installed" "yellow"
-    echo -e "${YELLOW}Do you want to reinstall? [y/N]: ${NC}"
-    read -r reinstall
-    if [ "$reinstall" != "y" ] && [ "$reinstall" != "Y" ]; then
-      pause
-      passwall_repo_menu
-      return
-    fi
-  fi
-  
-  log "Preparing system for Passwall2 installation from $repo_base..." "blue"
+prepare_for_passwall() {
+  log "Preparing system for Passwall2 installation..." "blue"
   
   # Remove dnsmasq if installed
   if opkg list-installed | grep -q "^dnsmasq "; then
@@ -373,75 +373,199 @@ install_from_repo() {
       log "dnsmasq removed successfully" "green"
     else
       log "Failed to remove dnsmasq" "red"
-      pause
-      passwall_repo_menu
-      return
+      return 1
     fi
   fi
   
   # Install dependencies
   log "Installing required dependencies..." "blue"
-  if opkg install dnsmasq-full kmod-nft-tproxy kmod-nft-socket >/dev/null 2>&1; then
+  local deps="dnsmasq-full kmod-nft-tproxy kmod-nft-socket"
+  if opkg install $deps >/dev/null 2>&1; then
     log "Dependencies installed successfully" "green"
+    return 0
   else
     log "Failed to install dependencies" "red"
-    pause
-    passwall_repo_menu
-    return
+    return 1
   fi
+}
+
+install_passwall_from_github() {
+  show_header
+  local arch=$(get_system_arch)
   
-  # Get system info
-  release=$(grep 'DISTRIB_RELEASE' /etc/openwrt_release | cut -d= -f2 | tr -d "'")
-  release=${release%.*}
-  arch=$(grep 'DISTRIB_ARCH' /etc/openwrt_release | cut -d= -f2 | tr -d "'")
-  
-  log "Configuring Passwall2 repository for OpenWrt $release $arch..." "blue"
-  
-  # Configure feeds
-  echo "src/gz passwall_packages $repo_base/packages-$release/$arch/passwall_packages" > /etc/opkg/customfeeds.conf
-  echo "src/gz passwall2 $repo_base/packages-$release/$arch/passwall2" >> /etc/opkg/customfeeds.conf
-  
-  # Add repository key
-  log "Adding repository key..." "blue"
-  if wget -O /tmp/passwall.pub "$repo_base/passwall.pub" >/dev/null 2>&1; then
-    if opkg-key add /tmp/passwall.pub >/dev/null 2>&1; then
-      log "Repository key added successfully" "green"
-    else
-      log "Failed to add repository key" "red"
-      pause
-      passwall_repo_menu
-      return
+  if [ -f "/etc/init.d/passwall2" ]; then
+    log "Passwall2 is already installed" "yellow"
+    echo -e "${YELLOW}Do you want to reinstall? [y/N]: ${NC}"
+    read -r reinstall
+    if [ "$reinstall" != "y" ] && [ "$reinstall" != "Y" ]; then
+      return 0
     fi
-  else
-    log "Failed to download repository key" "red"
-    pause
-    passwall_repo_menu
-    return
   fi
-  
-  # Update packages
-  log "Updating package lists..." "blue"
-  if opkg update >/dev/null 2>&1; then
-    log "Package lists updated successfully" "green"
-  else
-    log "Failed to update package lists" "red"
+
+  if ! prepare_for_passwall; then
     pause
-    passwall_repo_menu
-    return
+    return 1
   fi
+
+  log "Downloading Passwall2 packages for $arch..." "blue"
+  mkdir -p "$TEMP_DIR/passwall"
+  cd "$TEMP_DIR/passwall"
   
-  # Install Passwall2
+  # Main package
+  wget --no-check-certificate --timeout=30 --tries=3 \
+    "$REPO_GITHUB/releases/download/$REPO_RELEASE/luci-app-passwall2_${REPO_RELEASE}_${arch}.ipk" -O passwall2.ipk
+  
+  # Chinese language pack
+  wget --no-check-certificate --timeout=30 --tries=3 \
+    "$REPO_GITHUB/releases/download/$REPO_RELEASE/luci-i18n-passwall2-zh-cn_${REPO_RELEASE}_all.ipk" -O passwall2-zh.ipk
+
+  if [ ! -f "passwall2.ipk" ] || [ ! -f "passwall2-zh.ipk" ]; then
+    log "Failed to download Passwall2 packages" "red"
+    return 1
+  fi
+
   log "Installing Passwall2..." "blue"
-  if opkg install luci-app-passwall2 >/dev/null 2>&1; then
+  if opkg install --force-checksum *.ipk; then
+    log "Passwall2 installed successfully" "green"
     /etc/init.d/passwall2 enable
     /etc/init.d/passwall2 start
-    log "Passwall2 installed and started successfully" "green"
+    log "Passwall2 service enabled and started" "green"
   else
-    log "Failed to install Passwall2" "red"
+    log "Failed to install Passwall2 packages" "red"
+    return 1
   fi
-  
+
   pause
-  passwall_repo_menu
+}
+
+
+
+manual_install_passwall() {
+  show_header
+  
+  echo -e "${CYAN}=== Manual Passwall2 Installation ===${NC}"
+  echo -e "1) Download packages (Recommended Mirror)"
+  echo -e "2) Download packages (Alternative Mirror)"
+  echo -e "3) Install downloaded packages"
+  echo -e "4) Back to Passwall menu"
+  echo -n "Enter your choice (1-4): "
+  read -r choice
+
+  case "$choice" in
+    1|2)
+      mkdir -p "$TEMP_DIR/passwall"
+      cd "$TEMP_DIR/passwall"
+      
+      # Different mirrors for download
+      if [ "$choice" = "1" ]; then
+        MAIN_URL="https://fastly.jsdelivr.net/gh/xiaorouji/openwrt-passwall2@latest/releases/arm_cortex-a7_neon-vfpv4/luci-app-passwall2.ipk"
+       # LANG_URL="https://fastly.jsdelivr.net/gh/xiaorouji/openwrt-passwall2@latest/releases/all/luci-i18n-passwall2-zh-cn.ipk"
+      else
+        MAIN_URL="https://cdn.staticaly.com/gh/xiaorouji/openwrt-passwall2/main/releases/arm_cortex-a7_neon-vfpv4/luci-app-passwall2.ipk"
+       # LANG_URL="https://cdn.staticaly.com/gh/xiaorouji/openwrt-passwall2/main/releases/all/luci-i18n-passwall2-zh-cn.ipk"
+      fi
+
+      log "Downloading main package..." "blue"
+      if wget --no-check-certificate -O passwall2.ipk "$MAIN_URL" || curl -L -o passwall2.ipk "$MAIN_URL"; then
+        log "Main package downloaded successfully" "green"
+      else
+        log "Failed to download main package" "red"
+        pause
+        return 1
+      fi
+
+    #  log "Downloading language package..." "blue"
+    #  if wget --no-check-certificate -O passwall2-zh.ipk "$LANG_URL" || curl -L -o passwall2-zh.ipk "$LANG_URL"; then
+    #    log "Language package downloaded successfully" "green"
+    #  else
+    #    log "Language package failed (optional)" "yellow"
+    #  fi
+      
+      ls -lh
+      pause
+      manual_install_passwall
+      ;;
+
+    3)
+      if [ -f "$TEMP_DIR/passwall/passwall2.ipk" ]; then
+        cd "$TEMP_DIR/passwall"
+        
+        # Install dependencies
+        log "Installing dependencies..." "blue"
+        opkg remove dnsmasq
+        opkg install dnsmasq-full kmod-nft-tproxy kmod-nft-socket || {
+          log "Failed to install dependencies" "red"
+          pause
+          return 1
+        }
+
+        # Install main package
+        log "Installing Passwall2..." "blue"
+        opkg install --force-checksum passwall2.ipk || {
+          log "Main package installation failed" "red"
+          pause
+          return 1
+        }
+
+        # Install language if available
+        if [ -f "passwall2-zh.ipk" ]; then
+          opkg install --force-checksum passwall2-zh.ipk || log "Language install failed (non-fatal)" "yellow"
+        fi
+
+        # Enable service
+        /etc/init.d/passwall2 enable
+        /etc/init.d/passwall2 start
+        log "Passwall2 successfully installed and started" "green"
+      else
+        log "No packages found. Download them first!" "red"
+      fi
+      pause
+      manual_install_passwall
+      ;;
+
+    4) return ;;
+    *) 
+      log "Invalid choice" "red"
+      pause
+      manual_install_passwall
+      ;;
+  esac
+}
+
+
+passwall_menu() {
+  while true; do
+    show_header
+    echo -e "${CYAN}=== Passwall2 Installation ===${NC}"
+    echo -e "1) Install from GitHub (Recommended)"
+    echo -e "2) Manual download and installation"
+    echo -e "3) Check Passwall2 status"
+    echo -e "4) Back to Main Menu"
+    echo -n "Enter your choice (1-4): "
+    read -r choice
+    
+    case "$choice" in
+      1) install_passwall_from_github ;;
+      2) manual_install_passwall ;;
+      3) 
+        if [ -f "/etc/init.d/passwall2" ]; then
+          if pgrep -f passwall2 >/dev/null; then
+            log "Passwall2 is running" "green"
+          else
+            log "Passwall2 is not running" "red"
+          fi
+        else
+          log "Passwall2 is not installed" "red"
+        fi
+        pause
+        ;;
+      4) break ;;
+      *) 
+        log "Invalid selection" "red"
+        pause
+        ;;
+    esac
+  done
 }
 
 install_useful_luci_apps() {
@@ -455,7 +579,6 @@ install_useful_luci_apps() {
   echo -e "4) luci-app-upnp"
   echo -e "5) All of the above"
   echo -e "6) Back to Main Menu"
-  echo -e "${CYAN}==========================${NC}"
   echo -n "Select apps to install (1-6): "
   read -r choice
   
@@ -469,10 +592,12 @@ install_useful_luci_apps() {
     *) 
       log "Invalid selection" "red"
       pause
-      install_useful_luci_apps
       return
       ;;
   esac
+  
+  log "Updating package lists..." "blue"
+  opkg update >/dev/null 2>&1
   
   log "Installing selected LuCI apps..." "blue"
   for app in $apps; do
@@ -484,7 +609,6 @@ install_useful_luci_apps() {
   done
   
   pause
-  install_useful_luci_apps
 }
 
 add_geoip_rules() {
@@ -545,7 +669,6 @@ main_menu() {
     echo -e "11) Add GeoIP Rules"
     echo -e "12) View Log"
     echo -e "13) Exit"
-    echo -e "${CYAN}==========================${NC}"
     echo -n "Enter your choice (1-13): "
     read -r choice
     
@@ -558,7 +681,7 @@ main_menu() {
       6) remove_banip_ipset ;;
       7) restore_configs ;;
       8) full_uninstall ;;
-      9) passwall_repo_menu ;;
+      9) passwall_menu ;;
       10) install_useful_luci_apps ;;
       11) add_geoip_rules ;;
       12) less "$LOG_FILE" ;;
